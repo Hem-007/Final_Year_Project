@@ -1,0 +1,91 @@
+# JobShield AI - Git Ignore Rules
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode
+.idea
+*.sublime-workspace
+*.sublime-project
+
+# Build & Development
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# IDEs & Editors
+*.code-workspace
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Build outputs
+*.min.js
+*.min.css
+*.min.html
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# Documentation builds
+docs/build/
+site/
+
+# Database files (if added)
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration overrides (local)
+config.local.js
+secrets.json
+
+# Logs
+logs/
+*.log
+
+# Dependency directories
+vendor/
+venv/
+env/
+.venv/
+
+# Mac specific
+.AppleDouble
+.LSOverride
+
+# Windows specific
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Keep these files in git
+!.gitkeep
+!

@@ -1,0 +1,10 @@
+"""
+Run from this directory: Backend/Backend/
+    python run.py
+Or directly with uvicorn:
+    uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+"""
+import uvicorn
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
