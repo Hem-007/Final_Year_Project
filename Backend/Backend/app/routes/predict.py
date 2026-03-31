@@ -34,7 +34,9 @@ def _validate_text_input(input_data: str | None) -> str:
 
 
 def _build_response(prediction_result: dict, extracted_text: str) -> dict:
+    """Build the full API response including all XAI fields."""
     return {
+        # ── legacy / original fields (preserved for backward compat) ──
         "label": prediction_result["prediction"],
         "probability": prediction_result["fraud_probability"],
         "confidence": prediction_result["confidence"],
@@ -44,16 +46,21 @@ def _build_response(prediction_result: dict, extracted_text: str) -> dict:
         "input_source": prediction_result["input_source"],
         "extracted_text_length": len(extracted_text),
         "recommendation": prediction_result["recommendation"],
+        # ── new XAI fields ──
+        "confidence_pct": prediction_result.get("confidence_pct", 0),
+        "risk_factors": prediction_result.get("risk_factors", []),
+        "positive_indicators": prediction_result.get("positive_indicators", []),
+        "model_contribution": prediction_result.get("model_contribution", {"text": 65, "metadata": 35}),
+        "scam_type": prediction_result.get("scam_type", ["None detected"]),
+        "missing_fields": prediction_result.get("missing_fields", []),
+        "risk_breakdown": prediction_result.get("risk_breakdown", {}),
+        "final_verdict": prediction_result.get("final_verdict", prediction_result.get("recommendation", "")),
     }
 
 
 # JSON endpoint (text / url)
 @router.post("/analyze")
 async def analyze_job(payload: AnalyzeRequest):
-    """
-    JSON endpoint for text and URL analysis.
-    For images, use POST /analyze/image (multipart/form-data).
-    """
     if payload.text is not None:
         input_type = "text"
         input_data = payload.text
@@ -97,7 +104,6 @@ async def analyze_job(payload: AnalyzeRequest):
 # Multipart endpoint (image)
 @router.post("/analyze/image")
 async def analyze_job_image(image: UploadFile = File(...)):
-    """Multipart endpoint — send image as form field named 'image'."""
     saved_image_path: Path | None = None
     try:
         suffix = Path(image.filename or "upload").suffix or ".png"

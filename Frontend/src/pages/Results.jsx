@@ -4,45 +4,51 @@ import './Results.css'
 
 const API_BASE = 'http://localhost:8000'
 
+// ─── Data mapper: raw API → component state ────────────────────────────────
 function mapAnalysisResult(result, requestData = {}) {
   const label = result.label || result.prediction || 'Unknown'
   const probability = result.probability ?? result.fraud_probability ?? 0
   const riskScore = Math.round(probability * 100)
   const trustScore = Math.max(0, 100 - riskScore)
   const source = result.input_source || 'text'
+  const isFake = label === 'Fake Job'
 
+  // Legacy fields (keep working)
   const textIssues = [
     `Prediction: ${label}`,
     `Confidence: ${result.confidence}`,
     `Processed ${result.extracted_text_length} characters from ${source} input.`
   ]
-
-  if (result.risk_level === 'High') {
-    textIssues.push('Multiple scam indicators were detected in the posting content.')
-  } else if (result.risk_level === 'Medium') {
-    textIssues.push('Some caution signals were detected and should be reviewed manually.')
-  }
+  if (result.risk_level === 'High') textIssues.push('Multiple scam indicators were detected in the posting content.')
+  else if (result.risk_level === 'Medium') textIssues.push('Some caution signals were detected and should be reviewed manually.')
 
   return {
+    // summary
+    prediction: label,
+    isFake,
     riskScore,
     riskLevel: result.risk_level,
-    textAnalysis: {
-      score: trustScore,
-      issues: textIssues
-    },
+    // XAI fields
+    confidencePct: result.confidence_pct ?? (Math.abs(probability - 0.5) * 200),
+    confidenceLabel: result.confidence || 'Medium',
+    riskFactors: result.risk_factors || [],
+    positiveIndicators: result.positive_indicators || [],
+    modelContribution: result.model_contribution || { text: 65, metadata: 35 },
+    scamType: result.scam_type || ['None detected'],
+    missingFields: result.missing_fields || [],
+    riskBreakdown: result.risk_breakdown || { text_risk: riskScore, metadata_risk: 0, total_risk: riskScore },
+    finalVerdict: result.final_verdict || result.recommendation || '',
+    // legacy (for backward compat)
+    textAnalysis: { score: trustScore, issues: textIssues },
     imageAnalysis: {
       score: source === 'image' ? trustScore : (requestData.imageCount > 0 ? 50 : 0),
       images: requestData.imageCount || 0,
-      status: source === 'image'
-        ? 'OCR completed'
-        : ((requestData.imageCount || 0) > 0 ? 'Provided but not primary source' : 'No images')
+      status: source === 'image' ? 'OCR completed' : ((requestData.imageCount || 0) > 0 ? 'Provided but not primary source' : 'No images')
     },
     linkAnalysis: {
       score: source === 'url' ? trustScore : (requestData.jobLink ? 50 : 0),
       url: requestData.jobLink || 'Not provided',
-      status: source === 'url'
-        ? 'Scraped and analyzed'
-        : (requestData.jobLink ? 'Provided but not primary source' : 'Not analyzed')
+      status: source === 'url' ? 'Scraped and analyzed' : (requestData.jobLink ? 'Provided but not primary source' : 'Not analyzed')
     },
     recommendations: [
       result.recommendation,
@@ -53,6 +59,212 @@ function mapAnalysisResult(result, requestData = {}) {
   }
 }
 
+// ─── Sub-components ────────────────────────────────────────────────────────
+
+function SummaryCard({ data }) {
+  const riskColor = data.riskLevel === 'High' ? '#ef4444' : data.riskLevel === 'Medium' ? '#f59e0b' : '#10b981'
+  const bgClass = data.isFake ? 'summary-card summary-fake' : 'summary-card summary-real'
+
+  return (
+    <div className={bgClass}>
+      <div className="summary-verdict">
+        <div className="verdict-icon">{data.isFake ? '⚠️' : '✅'}</div>
+        <div className="verdict-text">
+          <div className="verdict-label">Verdict</div>
+          <div className="verdict-value">{data.prediction}</div>
+        </div>
+        <div className="verdict-badge" style={{ background: riskColor }}>
+          {data.riskLevel} Risk
+        </div>
+      </div>
+
+      <div className="summary-metrics">
+        <div className="metric-block">
+          <div className="metric-number" style={{ color: riskColor }}>{data.riskScore}%</div>
+          <div className="metric-label">Risk Score</div>
+          <div className="metric-bar-wrap">
+            <div className="metric-bar" style={{ width: `${data.riskScore}%`, background: riskColor }} />
+          </div>
+        </div>
+
+        <div className="metric-divider" />
+
+        <div className="metric-block">
+          <div className="metric-number" style={{ color: '#6366f1' }}>{Math.round(data.confidencePct)}%</div>
+          <div className="metric-label">Confidence</div>
+          <div className="metric-bar-wrap">
+            <div className="metric-bar" style={{ width: `${data.confidencePct}%`, background: '#6366f1' }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RiskFactorsCard({ factors }) {
+  return (
+    <div className="xai-card">
+      <div className="xai-card-header risk-header">
+        <span className="header-icon">⚠️</span>
+        <h3>Risk Factors</h3>
+        <span className="count-badge risk-count">{factors.length}</span>
+      </div>
+      <div className="xai-card-body">
+        {factors.length === 0 ? (
+          <p className="empty-state">No significant risk factors detected.</p>
+        ) : (
+          <ul className="factor-list">
+            {factors.map((f, i) => (
+              <li key={i} className="factor-item">
+                <span className="factor-label">{f.factor}</span>
+                <div className="factor-weight-wrap">
+                  <div className="factor-bar-bg">
+                    <div className="factor-bar risk-bar" style={{ width: `${Math.round(f.weight * 100)}%` }} />
+                  </div>
+                  <span className="factor-pct">{Math.round(f.weight * 100)}%</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PositiveIndicatorsCard({ indicators }) {
+  return (
+    <div className="xai-card">
+      <div className="xai-card-header positive-header">
+        <span className="header-icon">✅</span>
+        <h3>Positive Indicators</h3>
+        <span className="count-badge positive-count">{indicators.length}</span>
+      </div>
+      <div className="xai-card-body">
+        {indicators.length === 0 ? (
+          <p className="empty-state">No positive indicators found.</p>
+        ) : (
+          <ul className="indicator-list">
+            {indicators.map((ind, i) => (
+              <li key={i} className="indicator-item">
+                <span className="indicator-dot" />
+                {ind}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ModelInsightsCard({ contribution, breakdown }) {
+  return (
+    <div className="xai-card full-width-card">
+      <div className="xai-card-header insights-header">
+        <span className="header-icon">🧠</span>
+        <h3>Model Insights</h3>
+      </div>
+      <div className="insights-body">
+        <div className="contribution-section">
+          <div className="contribution-title">📊 Model Contribution</div>
+          <div className="contribution-bars">
+            <div className="contrib-row">
+              <span className="contrib-label">BiLSTM (Text)</span>
+              <div className="contrib-bar-wrap">
+                <div className="contrib-bar text-bar" style={{ width: `${contribution.text}%` }} />
+              </div>
+              <span className="contrib-pct">{contribution.text}%</span>
+            </div>
+            <div className="contrib-row">
+              <span className="contrib-label">MLP (Metadata)</span>
+              <div className="contrib-bar-wrap">
+                <div className="contrib-bar meta-bar" style={{ width: `${contribution.metadata}%` }} />
+              </div>
+              <span className="contrib-pct">{contribution.metadata}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="breakdown-section">
+          <div className="contribution-title">🔍 Risk Breakdown</div>
+          <div className="breakdown-pills">
+            <div className="breakdown-pill">
+              <div className="pill-value text-risk">{breakdown.text_risk}%</div>
+              <div className="pill-label">Text Risk</div>
+            </div>
+            <div className="breakdown-arrow">+</div>
+            <div className="breakdown-pill">
+              <div className="pill-value meta-risk">{breakdown.metadata_risk}%</div>
+              <div className="pill-label">Metadata Risk</div>
+            </div>
+            <div className="breakdown-arrow">=</div>
+            <div className="breakdown-pill highlight-pill">
+              <div className="pill-value total-risk">{breakdown.total_risk}%</div>
+              <div className="pill-label">Total Risk</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AdditionalAnalysisCard({ scamTypes, missingFields }) {
+  const hasScam = scamTypes.length > 0 && scamTypes[0] !== 'None detected'
+  return (
+    <div className="xai-card full-width-card">
+      <div className="xai-card-header additional-header">
+        <span className="header-icon">📋</span>
+        <h3>Additional Analysis</h3>
+      </div>
+      <div className="additional-body">
+        <div className="additional-col">
+          <div className="additional-subtitle">🎯 Scam Type Detection</div>
+          {hasScam ? (
+            <div className="scam-tags">
+              {scamTypes.map((s, i) => (
+                <span key={i} className="scam-tag">{s}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="no-scam-text">✅ No known scam patterns detected</p>
+          )}
+        </div>
+        <div className="additional-divider" />
+        <div className="additional-col">
+          <div className="additional-subtitle">❌ Missing Fields</div>
+          {missingFields.length === 0 ? (
+            <p className="no-missing-text">✅ All key fields are present</p>
+          ) : (
+            <ul className="missing-list">
+              {missingFields.map((f, i) => (
+                <li key={i} className="missing-item">{f}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FinalVerdictCard({ verdict, isFake }) {
+  return (
+    <div className={`verdict-card ${isFake ? 'verdict-fake' : 'verdict-real'}`}>
+      <div className="verdict-card-header">
+        <span className="header-icon">🔎</span>
+        <h3>Final Verdict</h3>
+      </div>
+      <div className="verdict-card-body">
+        <p className="verdict-text-block">{verdict}</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Results Component ───────────────────────────────────────────────
+
 function Results() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -62,28 +274,14 @@ function Results() {
 
   const runImageAnalysis = useCallback(async (primaryImage, requestData) => {
     try {
-      console.log('[Results] Sending image to /analyze/image')
       const fd = new FormData()
       fd.append('image', primaryImage)
-
-      // FIX: use the correct /analyze/image endpoint for multipart uploads
-      const response = await fetch(`${API_BASE}/analyze/image`, {
-        method: 'POST',
-        body: fd
-      })
-
+      const response = await fetch(`${API_BASE}/analyze/image`, { method: 'POST', body: fd })
       const data = await response.json()
-      console.log('[Results] Image API Response:', data)
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Image analysis failed')
-      }
-
-      const mapped = mapAnalysisResult(data, requestData)
+      if (!response.ok) throw new Error(data.detail || 'Image analysis failed')
       sessionStorage.setItem('analysisResult', JSON.stringify(data))
-      setAnalysisResults(mapped)
+      setAnalysisResults(mapAnalysisResult(data, requestData))
     } catch (error) {
-      console.error('[Results] Error:', error)
       setErrorMessage(error.message || 'Unable to complete analysis.')
     } finally {
       setIsLoading(false)
@@ -91,34 +289,24 @@ function Results() {
   }, [])
 
   useEffect(() => {
-    // Check for cached result from Dashboard (text/url submissions)
     const cachedResult = sessionStorage.getItem('analysisResult')
     const sessionAnalysisData = sessionStorage.getItem('analysisData')
     const requestData = sessionAnalysisData ? JSON.parse(sessionAnalysisData) : {}
 
     if (cachedResult) {
-      console.log('[Results] Using cached result from Dashboard')
-      const rawResult = JSON.parse(cachedResult)
-      setAnalysisResults(mapAnalysisResult(rawResult, requestData))
+      setAnalysisResults(mapAnalysisResult(JSON.parse(cachedResult), requestData))
       setIsLoading(false)
       return
     }
 
-    // Fallback: image submitted from Dashboard but not yet analyzed
     const stateInput = location.state?.analysisInput
     const primaryImage = stateInput?.primaryImage
-
     if (!primaryImage) {
-      // Nothing to work with — go back
-      if (!stateInput && !sessionAnalysisData) {
-        navigate('/dashboard')
-        return
-      }
+      if (!stateInput && !sessionAnalysisData) { navigate('/dashboard'); return }
       setErrorMessage('No analysis result found. Please try again.')
       setIsLoading(false)
       return
     }
-
     runImageAnalysis(primaryImage, requestData)
   }, [location.state, navigate, runImageAnalysis])
 
@@ -126,11 +314,9 @@ function Results() {
     return (
       <main className="results-container">
         <div className="loading-section">
-          <div className="loading-spinner">
-            <div className="spinner"></div>
-          </div>
+          <div className="loading-spinner"><div className="spinner" /></div>
           <h2>Analyzing Job Posting</h2>
-          <p>Our AI is scanning the job description, images, and links...</p>
+          <p>Our AI is scanning the job description for risk signals...</p>
         </div>
       </main>
     )
@@ -143,148 +329,47 @@ function Results() {
           <div className="error-section">
             <h2>Something went wrong</h2>
             <p>{errorMessage || 'Please try again with a new job posting'}</p>
-            <button className="btn btn-primary" onClick={() => navigate('/dashboard')}>
-              Analyze Another Job
-            </button>
+            <button className="btn btn-primary" onClick={() => navigate('/dashboard')}>Analyze Another Job</button>
           </div>
         </div>
       </main>
     )
   }
 
-  const getRiskColor = (level) => {
-    switch (level) {
-      case 'Low': return '#10b981'
-      case 'Medium': return '#f59e0b'
-      case 'High': return '#ef4444'
-      default: return '#6b7280'
-    }
-  }
-
   return (
     <main className="results-container">
       <div className="results-header">
         <div className="container">
-          <h1>Analysis Complete</h1>
-          <p>Here's what we found about this job posting</p>
+          <h1>AI Analysis Complete</h1>
+          <p>Explainable breakdown of the job posting analysis</p>
         </div>
       </div>
 
-      <div className="container results-content">
-        {/* Risk Score Card */}
-        <div className="risk-score-card">
-          <div className="risk-circle">
-            <div
-              className="risk-meter"
-              style={{
-                background: `conic-gradient(${getRiskColor(analysisResults.riskLevel)} 0deg ${analysisResults.riskScore * 3.6}deg, #e5e7eb ${analysisResults.riskScore * 3.6}deg)`
-              }}
-            >
-              <div className="risk-center">
-                <div className="risk-score">{analysisResults.riskScore}</div>
-                <div className="risk-label">Risk Score</div>
-              </div>
-            </div>
-          </div>
-          <div className="risk-info">
-            <h2>Overall Risk Level</h2>
-            <div className="risk-badge" style={{ background: getRiskColor(analysisResults.riskLevel) }}>
-              {analysisResults.riskLevel}
-            </div>
-            <p>
-              {analysisResults.riskLevel === 'Low' &&
-                'This job posting appears to be legitimate based on our analysis.'}
-              {analysisResults.riskLevel === 'Medium' &&
-                'Some indicators suggest caution. Verify details with the company.'}
-              {analysisResults.riskLevel === 'High' &&
-                'Multiple red flags detected. Proceed with extreme caution.'}
-            </p>
-          </div>
+      <div className="container xai-dashboard">
+
+        {/* 1 — Top Summary */}
+        <SummaryCard data={analysisResults} />
+
+        {/* 2 — Risk vs Positive side-by-side */}
+        <div className="two-col-grid">
+          <RiskFactorsCard factors={analysisResults.riskFactors} />
+          <PositiveIndicatorsCard indicators={analysisResults.positiveIndicators} />
         </div>
 
-        {/* Analysis Grid */}
-        <div className="analysis-grid">
-          <div className="analysis-card">
-            <div className="card-header">
-              <h3>📝 Text Analysis</h3>
-              <div className="score-badge" style={{ background: getScoreColor(analysisResults.textAnalysis.score) }}>
-                {analysisResults.textAnalysis.score}%
-              </div>
-            </div>
-            <div className="card-content">
-              {analysisResults.textAnalysis.issues.length > 0 ? (
-                <>
-                  <p className="card-title">Findings:</p>
-                  <ul className="issues-list">
-                    {analysisResults.textAnalysis.issues.map((issue, i) => (
-                      <li key={i}>
-                        <span className="issue-icon">ℹ️</span>
-                        {issue}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <p className="success-text">✓ No major text issues detected</p>
-              )}
-            </div>
-          </div>
+        {/* 3 — Model Insights */}
+        <ModelInsightsCard
+          contribution={analysisResults.modelContribution}
+          breakdown={analysisResults.riskBreakdown}
+        />
 
-          <div className="analysis-card">
-            <div className="card-header">
-              <h3>🖼️ Image Analysis</h3>
-              <div className="score-badge" style={{ background: getScoreColor(analysisResults.imageAnalysis.score) }}>
-                {analysisResults.imageAnalysis.score}%
-              </div>
-            </div>
-            <div className="card-content">
-              <div className="stat-row">
-                <span>Images Analyzed:</span>
-                <strong>{analysisResults.imageAnalysis.images}</strong>
-              </div>
-              <div className="stat-row">
-                <span>Status:</span>
-                <strong>{analysisResults.imageAnalysis.status}</strong>
-              </div>
-            </div>
-          </div>
+        {/* 4 — Additional Analysis */}
+        <AdditionalAnalysisCard
+          scamTypes={analysisResults.scamType}
+          missingFields={analysisResults.missingFields}
+        />
 
-          <div className="analysis-card">
-            <div className="card-header">
-              <h3>🔗 Link Analysis</h3>
-              <div className="score-badge" style={{ background: getScoreColor(analysisResults.linkAnalysis.score) }}>
-                {analysisResults.linkAnalysis.score}%
-              </div>
-            </div>
-            <div className="card-content">
-              <div className="stat-row">
-                <span>URL:</span>
-                <strong className="url-text" title={analysisResults.linkAnalysis.url}>
-                  {analysisResults.linkAnalysis.url}
-                </strong>
-              </div>
-              <div className="stat-row">
-                <span>Safety Status:</span>
-                <strong style={{ color: getScoreColor(analysisResults.linkAnalysis.score) }}>
-                  {analysisResults.linkAnalysis.status}
-                </strong>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Recommendations */}
-        <div className="recommendations-section">
-          <h2>Recommended Steps</h2>
-          <div className="recommendations-list">
-            {analysisResults.recommendations.map((rec, i) => (
-              <div key={i} className="recommendation-item">
-                <div className="rec-number">{i + 1}</div>
-                <div className="rec-content"><p>{rec}</p></div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* 5 — Final Verdict */}
+        <FinalVerdictCard verdict={analysisResults.finalVerdict} isFake={analysisResults.isFake} />
 
         {/* Action Buttons */}
         <div className="action-buttons">
@@ -305,12 +390,6 @@ function Results() {
       </div>
     </main>
   )
-}
-
-function getScoreColor(score) {
-  if (score >= 75) return '#10b981'
-  if (score >= 50) return '#f59e0b'
-  return '#ef4444'
 }
 
 export default Results
