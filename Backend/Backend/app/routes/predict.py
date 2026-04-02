@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.services import prediction_service
+from app.services.user_input_store import store_user_input  # ← NEW
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 if str(BACKEND_DIR) not in sys.path:
@@ -58,6 +59,11 @@ def _build_response(prediction_result: dict, extracted_text: str) -> dict:
     }
 
 
+def _prediction_to_int(prediction_label: str) -> int:
+    """Convert 'Fake Job' / 'Real Job' label to 0/1 integer for CSV storage."""
+    return 1 if prediction_label == "Fake Job" else 0
+
+
 # JSON endpoint (text / url)
 @router.post("/analyze")
 async def analyze_job(payload: AnalyzeRequest):
@@ -91,6 +97,14 @@ async def analyze_job(payload: AnalyzeRequest):
 
         print(f"[Backend] input_type={input_type}, text_length={len(extracted_text)}")
         result = prediction_service.predict_text(extracted_text, input_source=input_type)
+
+        # ── NEW: persist input for future retraining ──────────────────────────
+        store_user_input(
+            text=extracted_text,
+            prediction=_prediction_to_int(result["prediction"]),
+        )
+        # ─────────────────────────────────────────────────────────────────────
+
         return _build_response(result, extracted_text)
 
     except HTTPException:
@@ -113,6 +127,14 @@ async def analyze_job_image(image: UploadFile = File(...)):
         extracted_text = extract_text_from_image(saved_image_path)
         print(f"[Backend] image OCR, text_length={len(extracted_text)}")
         result = prediction_service.predict_text(extracted_text, input_source="image")
+
+        # ── NEW: persist input for future retraining ──────────────────────────
+        store_user_input(
+            text=extracted_text,
+            prediction=_prediction_to_int(result["prediction"]),
+        )
+        # ─────────────────────────────────────────────────────────────────────
+
         return _build_response(result, extracted_text)
 
     except HTTPException:
@@ -131,6 +153,14 @@ async def analyze_job_image(image: UploadFile = File(...)):
 def predict_job(input: AnalyzeRequest):
     raw_text = input.text or input.input_data
     result = prediction_service.predict_text(_validate_text_input(raw_text))
+
+    # ── NEW: persist input for future retraining ──────────────────────────────
+    store_user_input(
+        text=_validate_text_input(raw_text),
+        prediction=_prediction_to_int(result["prediction"]),
+    )
+    # ─────────────────────────────────────────────────────────────────────────
+
     return {
         "label": result["prediction"],
         "probability": result["fraud_probability"],

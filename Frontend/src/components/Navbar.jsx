@@ -16,19 +16,27 @@ function Navbar() {
           </Link>
           <ul className="nav-links">
             <li>
-              <Link 
-                to="/" 
+              <Link
+                to="/"
                 className={isActive('/') ? 'active' : ''}
               >
                 Home
               </Link>
             </li>
             <li>
-              <Link 
-                to="/dashboard" 
+              <Link
+                to="/dashboard"
                 className={isActive('/dashboard') ? 'active' : ''}
               >
                 Detect Job
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/evolution"
+                className={isActive('/evolution') ? 'active' : ''}
+              >
+                Evolution
               </Link>
             </li>
             <li>

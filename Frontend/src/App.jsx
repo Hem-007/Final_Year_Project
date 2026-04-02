@@ -3,6 +3,7 @@ import Navbar from './components/Navbar'
 import Landing from './pages/Landing'
 import Dashboard from './pages/Dashboard'
 import Results from './pages/Results'
+import Evolution from './pages/Evolution'   // ← NEW
 import './App.css'
 
 function App() {
@@ -10,10 +11,11 @@ function App() {
     <BrowserRouter>
       <Navbar />
       <Routes>
-        <Route path="/" element={<Landing />} />
+        <Route path="/"          element={<Landing />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/results" element={<Results />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/results"   element={<Results />} />
+        <Route path="/evolution" element={<Evolution />} />  {/* ← NEW */}
+        <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
