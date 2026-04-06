@@ -29,12 +29,13 @@
 10. [Workflow / Pipeline](#10-workflow--pipeline)
 11. [Explainable AI Features](#11-explainable-ai-features-xai)
 12. [Tech Stack](#12-tech-stack)
-13. [Installation & Usage](#13-installation--usage)
-14. [Project Structure](#14-project-structure)
-15. [Results & Performance Analysis](#15-results--performance-analysis)
-16. [Limitations](#16-limitations)
-17. [Future Enhancements](#17-future-enhancements)
-18. [Conclusion](#18-conclusion)
+13. [Features](#13-features)
+14. [Installation & Usage](#14-installation--usage)
+15. [Project Structure](#15-project-structure)
+16. [Results & Performance Analysis](#16-results--performance-analysis)
+17. [Limitations](#17-limitations)
+18. [Future Enhancements](#18-future-enhancements)
+19. [Conclusion](#19-conclusion)
 
 ---
 
@@ -42,14 +43,14 @@
 
 **Title:** Smart Fake Job Detection System Using Deep Learning (JobGuard)
 
-**JobGuard** is a full-stack, AI-powered web application that identifies and flags fraudulent job postings in real time. The system combines a **Bidirectional Long Short-Term Memory (BiLSTM)** neural network for deep contextual text-feature extraction with a **Maxout-activated Multi-Layer Perceptron (MLP)** classifier, forming a powerful joint deep learning architecture trained end-to-end on the Kaggle Employment Scam Aegean Dataset (EMSCAD).
+**JobGuard** is a full-stack, AI-powered web application that identifies and flags fraudulent job postings in real time. The system combines a **Bidirectional Long Short-Term Memory (BiLSTM)** neural network for deep contextual text-feature extraction with a **Maxout-activated Multi-Layer Perceptron (MLP)** classifier, forming a powerful joint deep learning architecture trained end-to-end on the Kaggle Employment Scam Aegean Dataset (EMSCAD). It features an **adaptive system** with a **Scam Evolution Dashboard** for tracking fraud patterns over time.
 
 The system accepts three types of input:
 - **Raw job description text** — copy-pasted directly from any job board
 - **Job posting URL** — the page is scraped automatically using BeautifulSoup
 - **Job screenshot / image** — text is extracted via EasyOCR and then classified
 
-Every prediction is accompanied by a **full Explainable AI (XAI) breakdown** — risk score, confidence percentage, weighted risk factors, positive legitimacy indicators, scam type classification, missing field detection, and a natural-language final verdict — making the system both a detection tool and a transparent AI assistant for job seekers.
+Every prediction is accompanied by a **full Explainable AI (XAI) breakdown** — risk score, confidence percentage, weighted risk factors, positive legitimacy indicators, scam type classification, missing field detection, and a natural-language final verdict — making the system both a detection tool and a transparent AI assistant for job seekers. Every prediction stores job text, prediction, and timestamp in `data/user_inputs.csv` for continuous learning.
 
 ---
 
@@ -524,12 +525,14 @@ JobGuard follows a classic **three-tier web application architecture** with an e
 |    POST /predict/text    -- raw text classification      |
 |    POST /predict/url     -- URL scraping + classify      |
 |    POST /predict/image   -- OCR image + classify         |
-|                                                          |
-|  Services:                                               |
-|    PredictionService   -- ML inference pipeline          |
-|    ScraperService      -- BeautifulSoup web scraping     |
-|    OCRService          -- EasyOCR image text extraction  |
-|    XAIService          -- Explainable AI scoring         |
+    GET  /evolution       -- analytics dashboard data     |
+                                                          |
+  Services:                                               |
+    PredictionService   -- ML inference pipeline          |
+    ScraperService      -- BeautifulSoup web scraping     |
+    OCRService          -- EasyOCR image text extraction  |
+    XAIService          -- Explainable AI scoring         |
+    UserInputStore      -- User data collection           |
 +---------------------------+------------------------------+
                             | In-process function calls
                             v
@@ -539,6 +542,8 @@ JobGuard follows a classic **three-tier web application architecture** with an e
 |  models/bilstm_model_final.keras  (Feature extractor)   |
 |  models/maxout_model_final.keras  (Classifier head)     |
 |  data/processed/tokenizer.pkl     (Keras Tokenizer)     |
+|  data/user_inputs.csv             (User data storage)   |
+|  retraining/retrain_model.py      (Retraining module)   |
 +----------------------------------------------------------+
 ```
 
@@ -583,7 +588,10 @@ Singleton loading avoids repeated file I/O and Keras model deserialization on ev
 6. **Padding**: `pad_sequences(maxlen=256, padding='post')` → output shape `(1, 256)`.
 7. **Inference**: `model.predict()` → fraud probability scalar in [0, 1].
 8. **XAI Layer** computes: risk score, confidence score, risk factors, positive indicators, scam type, missing fields, final verdict.
-9. **JSON response** returned to React; `Results.jsx` renders the full explanation UI.
+9. **Store Prediction**: Job text, prediction result, and timestamp are stored in `data/user_inputs.csv` for analytics and retraining.
+10. **JSON response** returned to React; `Results.jsx` renders the full explanation UI.
+11. **Dashboard Access**: Users can view aggregated analytics via the Evolution Dashboard, which reads from stored data.
+12. **Retraining**: Periodically, stored inputs are manually validated, new data added to `data/new_data.csv`, and the model retrained using `retraining/retrain_model.py` to adapt to new scam patterns.
 
 ### 10.2 Input Mode Details
 
@@ -713,7 +721,28 @@ A programmatically generated natural-language summary conditioned on the risk sc
 
 ---
 
-## 13. Installation & Usage
+## 13. Features
+
+### 13.1 Core Detection Features
+
+- **Multi-Source Input**: Accepts raw text, job URLs (with automatic scraping), and image screenshots (with OCR).
+- **Explainable AI**: Provides detailed risk breakdowns, confidence scores, and natural-language verdicts.
+- **Real-Time Processing**: Sub-100ms inference latency for instant results.
+
+### 13.2 Scam Evolution & Adaptive Learning
+
+- **Evolution Dashboard**: A dedicated frontend page displaying fraud trend analytics over time.
+  - Fraud Trend over time
+  - Scam Type Distribution
+  - Risk Level Distribution
+  - Common Scam Signals
+  - Safety Tips for users
+- **User Input Data Collection**: Every prediction stores job text, prediction result, and timestamp in `data/user_inputs.csv`.
+- **Model Retraining Support**: Manual validation of stored inputs, integration with new data in `data/new_data.csv`, and retraining script `retraining/retrain_model.py` to adapt to evolving scam patterns.
+
+---
+
+## 14. Installation & Usage
 
 ### 13.1 Prerequisites
 
@@ -758,23 +787,26 @@ React app at `http://localhost:5173`.
 3. Click **Analyse** and wait for results (< 1 s for text; 2–5 s for URL/image).
 4. Review the XAI breakdown: risk gauge, verdict badge, risk factor cards, positive indicators, scam type, and final verdict.
 
-### 13.6 API Endpoints
+### 14.6 API Endpoints
 
 | Endpoint | Method | Body | Description |
 |----------|--------|------|-------------|
 | `/predict/text` | POST | `{"text": "..."}` | Classify raw text |
 | `/predict/url` | POST | `{"url": "..."}` | Scrape URL and classify |
 | `/predict/image` | POST | `multipart/form-data` | OCR image and classify |
+| `/evolution` | GET | — | Retrieve analytics data for dashboard |
 | `/health` | GET | — | Health check |
 
 ---
 
-## 14. Project Structure
+## 15. Project Structure
 
 ```
 Fake_Job_Detection_Final_version/
 |-- data/
 |   |-- raw/fake_job_postings.csv
+|   |-- user_inputs.csv
+|   |-- new_data.csv
 |   `-- processed/
 |       |-- tokenizer.pkl
 |       |-- X_train.npy / y_train.npy
@@ -784,6 +816,8 @@ Fake_Job_Detection_Final_version/
 |   |-- joint_model_final.keras
 |   |-- bilstm_model_final.keras
 |   `-- maxout_model_final.keras
+|-- retraining/
+|   `-- retrain_model.py
 |-- notebooks/
 |   |-- config_and_utils.py
 |   |-- 01_training_pipeline.ipynb
@@ -792,10 +826,13 @@ Fake_Job_Detection_Final_version/
 |   |-- Backend/app/
 |   |   |-- main.py
 |   |   |-- routes/
+|   |   |   |-- predict.py
+|   |   |   `-- evolution.py
 |   |   `-- services/
 |   |       |-- prediction_service.py
 |   |       |-- scraper_service.py
-|   |       `-- ocr_service.py
+|   |       |-- ocr_service.py
+|   |       `-- user_input_store.py
 |   |-- OCR/utils/ocr_reader.py
 |   `-- websc_proj/scraper.py
 `-- Frontend/src/
@@ -804,12 +841,13 @@ Fake_Job_Detection_Final_version/
     `-- pages/
         |-- Landing.jsx
         |-- Dashboard.jsx
-        `-- Results.jsx
+        |-- Results.jsx
+        `-- Evolution.jsx
 ```
 
 ---
 
-## 15. Results & Performance Analysis
+## 16. Results & Performance Analysis
 
 ### 15.1 Test Set Performance
 
@@ -840,7 +878,7 @@ Fake_Job_Detection_Final_version/
 
 ---
 
-## 16. Limitations
+## 17. Limitations
 
 1. **English-only**: Trained on English job postings only. Fraudulent postings in other languages are out of scope.
 2. **Text-only deep learning**: Structured fields (employment type, has_logo) are only used in XAI heuristics, not fed directly into the model.
@@ -853,7 +891,7 @@ Fake_Job_Detection_Final_version/
 
 ---
 
-## 17. Future Enhancements
+## 18. Future Enhancements
 
 1. **Pre-trained LLM backbone**: Replace the from-scratch BiLSTM with a fine-tuned **BERT** or **RoBERTa** for richer contextual representations and better generalisation to unseen scam formats.
 2. **Multi-language support**: Extend preprocessing, OCR, and model training to Arabic, Malay, Chinese, and other languages prevalent in emerging job markets.
@@ -867,7 +905,7 @@ Fake_Job_Detection_Final_version/
 
 ---
 
-## 18. Conclusion
+## 19. Conclusion
 
 JobGuard demonstrates that a carefully designed **Bidirectional LSTM + Maxout MLP** architecture — trained end-to-end with class-weighted binary cross-entropy, label smoothing, and multi-layer regularisation — achieves state-of-the-art performance on the challenging EMSCAD fake job detection benchmark:
 
